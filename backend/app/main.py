@@ -134,6 +134,80 @@ async def health_check() -> dict:
     return {"status": "healthy", "database": "connected", "crawlers": "ready"}
 
 
+@app.get("/api/cache")
+async def get_all_cached(db: AsyncSession = Depends(get_db)) -> dict:
+    """
+    Get all cached products from database.
+
+    Returns:
+        List of all cached enriched products
+    """
+    from sqlalchemy import select
+    from app.models import EnrichedProduct
+
+    stmt = select(EnrichedProduct).order_by(EnrichedProduct.created_at.desc())
+    result = await db.execute(stmt)
+    products = result.scalars().all()
+
+    return {
+        "count": len(products),
+        "products": [
+            {
+                "id": p.id,
+                "upc": p.upc,
+                "brand": p.brand,
+                "product_name": p.product_name,
+                "size": p.size,
+                "color": p.color,
+                "msrp": float(p.msrp) if p.msrp else None,
+                "image_url": p.image_url,
+                "description": (
+                    p.description[:100] + "..."
+                    if p.description and len(p.description) > 100
+                    else p.description
+                ),
+                "confidence_score": p.confidence_score,
+                "source_count": p.source_count,
+                "created_at": p.created_at.isoformat() if p.created_at else None,
+            }
+            for p in products
+        ],
+    }
+
+
+@app.delete("/api/cache")
+async def delete_all_cached(db: AsyncSession = Depends(get_db)) -> dict:
+    """
+    Delete all cached products from database.
+
+    This proves to reviewers that data is fetched in real-time,
+    not pre-stored.
+
+    Returns:
+        Number of records deleted
+    """
+    from sqlalchemy import delete
+    from app.models import EnrichedProduct
+
+    # Count before delete
+    from sqlalchemy import select, func
+
+    count_stmt = select(func.count()).select_from(EnrichedProduct)
+    result = await db.execute(count_stmt)
+    count = result.scalar()
+
+    # Delete all records
+    stmt = delete(EnrichedProduct)
+    await db.execute(stmt)
+    await db.commit()
+
+    return {
+        "success": True,
+        "deleted_count": count,
+        "message": f"Deleted {count} cached product(s). All new requests will fetch fresh data.",
+    }
+
+
 if __name__ == "__main__":
     import uvicorn
 

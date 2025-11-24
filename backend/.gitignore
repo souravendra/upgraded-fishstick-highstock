@@ -14,7 +14,7 @@ node_modules/
 .idea/
 *.swp
 *.swo
-
+.cache
 # Environment
 .env
 .env.local
